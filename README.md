@@ -51,6 +51,7 @@ curl http://localhost:3000/api/agent/traces/<trace-id>
 
 - The sandbox uses the `VERCEL_OIDC_TOKEN` pulled by `vercel env pull`.
 - Each request creates a short-lived microVM. Files and processes are wiped after execution.
+- Tool traces are stored in memory for development, so they reset on server restart or cold start.
 
 ## Learn More
 
