@@ -28,6 +28,10 @@ export default function Home() {
   const [response, setResponse] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [traceId, setTraceId] = useState<string | null>(null);
+  const [trace, setTrace] = useState<Record<string, unknown> | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
+  const [isTraceLoading, setIsTraceLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,6 +46,9 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
     setResponse(null);
+    setTraceId(null);
+    setTrace(null);
+    setTraceError(null);
 
     try {
       const res = await fetch("/api/agent", {
@@ -49,19 +56,78 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: trimmed }),
       });
-      const data = (await res.json()) as { text?: string; error?: string };
+
+      const nextTraceId = res.headers.get("x-trace-id");
+      if (nextTraceId) {
+        setTraceId(nextTraceId);
+      }
 
       if (!res.ok) {
-        setError(data.error || "Sandbox execution failed.");
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = (await res.json()) as { error?: string };
+          setError(data.error || "Sandbox execution failed.");
+        } else {
+          const text = await res.text();
+          setError(text || "Sandbox execution failed.");
+        }
         return;
       }
 
-      setResponse(data.text || "No response returned.");
+      if (!res.body) {
+        setError("Streaming response unavailable in this browser.");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let streamedText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        streamedText += decoder.decode(value, { stream: true });
+        setResponse(streamedText);
+      }
+
+      streamedText += decoder.decode();
+      setResponse(streamedText || "No response returned.");
     } catch (err) {
       console.error(err);
       setError("Request failed. Check the server logs for details.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLoadTrace = async () => {
+    if (!traceId) {
+      return;
+    }
+
+    setIsTraceLoading(true);
+    setTrace(null);
+    setTraceError(null);
+
+    try {
+      const res = await fetch(`/api/agent/traces/${traceId}`);
+      const data = (await res.json()) as Record<string, unknown> & {
+        error?: string;
+      };
+
+      if (!res.ok) {
+        setTraceError(data.error || "Trace not available.");
+        return;
+      }
+
+      setTrace(data);
+    } catch (err) {
+      console.error(err);
+      setTraceError("Failed to load trace.");
+    } finally {
+      setIsTraceLoading(false);
     }
   };
 
@@ -206,6 +272,31 @@ export default function Home() {
                 </p>
               </div>
             </div>
+            {traceId && (
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-200/70 bg-white/70 p-4 text-xs text-slate-600">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span>
+                    Trace ID: <span className="font-mono">{traceId}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLoadTrace}
+                    disabled={isTraceLoading}
+                    className="rounded-full border border-slate-200/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-[var(--accent)] hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isTraceLoading ? "Loading..." : "Load Trace"}
+                  </button>
+                </div>
+                {traceError && (
+                  <p className="mt-3 text-rose-600">{traceError}</p>
+                )}
+                {trace && (
+                  <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-slate-700">
+                    {JSON.stringify(trace, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
           </aside>
         </div>
       </main>

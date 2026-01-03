@@ -32,12 +32,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Try the API
+## Try the API (streaming)
 
 ```bash
-curl -X POST -H "Content-Type: application/json" \
+curl -N -X POST -H "Content-Type: application/json" \
   -d '{"prompt":"Get the top Hacker News story title and URL"}' \
   http://localhost:3000/api/agent
+```
+
+The response streams as plain text. Each request returns an `X-Trace-Id` header
+that you can use to inspect tool calls:
+
+```bash
+curl http://localhost:3000/api/agent/traces/<trace-id>
 ```
 
 ## Notes
